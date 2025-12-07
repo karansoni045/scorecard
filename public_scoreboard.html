@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1920,initial-scale=1" />
+<title>Live Scoreboard - Crex</title>
+
+<style>
+  /* === Global / Canvas fixed 1920x1080 === */
+  html,body {
+    margin:0; padding:0;
+    background: transparent;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  /* container locked to FullHD */
+  .canvas {
+    width: 2130px;
+    height: 1200px;
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
+    margin: 0 auto;
+    background: #0b0b0b;
+    border: 6px solid #c90000; /* exact red border */
+    border-radius: 10px;
+    
+  }
+
+  /* Stadium background (subtle dim + noise) */
+  .stadium {
+    position:absolute; top: 140px; left:0; right:0; height:480px;
+    background-image: url("/static/stadium.jpg");
+    background-size: cover;
+    background-position: center;
+    filter: saturate(0.95) contrast(1) brightness(0.98);
+    transform-origin:center;
+    display: none;
+  }
+  .stadium::after {
+    content:""; position:absolute; inset:0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.08), rgba(0,0,0,0.25));
+    top: 130px;
+  }
+
+  /* TOP area: three big rounded boxes and circles */
+  .top-area {
+    position:absolute; left:0; right:0; top:0; height:140px;
+    display:grid; grid-template-columns: 1fr 520px 1fr;
+    gap:18px; padding: 9px 4px;
+    align-items:center;
+  }
+
+  .team-block {
+    height:250px;
+    border-radius:14px;
+    display:flex; align-items:center; gap:14px;
+    padding:14px 18px;
+    box-sizing:border-box;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6), 0 2px 0 rgba(255,255,255,0.03) inset;
+    position:relative;
+    overflow:visible;
+  }
+
+  .team-left {
+    background: linear-gradient(90deg,#0ea5ff,#085f9b); /* bluish */
+    border: 3px solid rgba(255,255,255,0.06);
+  }
+  .team-right {
+    background: linear-gradient(90deg,#bd00d7,#ff6fbf); /* purple -> pink */
+    border: 3px solid rgba(255,255,255,0.06);
+  }
+
+  /* circular emblem overlapping boxes */
+  .circle {
+    width: 120px;
+    height: 212px;
+    border-radius: 50%;
+    background: #00ff4d;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(255, 255, 255, 0.06) inset;
+    border: 6px solid rgba(255, 255, 255, 0.18);
+    transform: translateY(-6px);
+    flex: 0 0 219px;
+}
+
+  .team-content {
+    flex:1;
+    color:#fff;
+    display:flex; flex-direction:column; gap:6px;
+    justify-content:center;
+  }
+
+  .team-code {
+    font-weight:800; font-size:34px; letter-spacing:2px;
+    text-transform:uppercase;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  }
+  .team-score {
+    font-size:56px; font-weight:900; color:#fff;
+    text-shadow: 0 6px 18px rgba(0,0,0,0.6), 0 0 12px rgba(0,0,0,0.2);
+  }
+  .team-overs {
+    font-size:20px; opacity:0.85;
+  }
+
+  /* center dark capsule */
+  .center-box {
+    height:239px; border-radius:14px; background:#121146;
+    display:flex; align-items:center; justify-content:center;
+    border: 3px solid rgba(255,255,255,0.06);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+  }
+  .center-big {
+    font-size:72px; font-weight:900; color:#fff;
+    text-shadow: 0 6px 24px rgba(0,0,0,0.6);
+  }
+
+  /* middle purple/yellow animated strip */
+  .mid-strip {
+    position:absolute; top:263px; left:0; right:0; height:60px;
+    display:flex; align-items:center; justify-content:center;
+    z-index:12;
+    overflow:hidden;
+    border-top:4px solid rgba(255,255,255,0.04);
+    border-bottom:4px solid rgba(255,255,255,0.04);
+  }
+  .mid-gradient {
+    width:100%; height:100%;
+    background: linear-gradient(90deg, #bd00d7 0%, #f0cf00 40%, #bd00d7 100%);
+    //transform: translateX(-10%);
+    //animation: slideGradient 8s linear infinite;
+    opacity:0.98;
+  }
+  @keyframes slideGradient {
+    0% { transform: translateX(-15%); }
+    50% { transform: translateX(5%); }
+    100% { transform: translateX(-15%); }
+  }
+
+  /* bottom big player panels (3) */
+  .bottom-zone {
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    bottom: 108px;
+    height: 343px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 1px;
+    padding-bottom: 14px;
+    z-index: 14;
+}
+
+  .player-card {
+    width: calc((100% - 56px) / 3);
+    height: 260px;
+    border-radius: 12px;
+    background: linear-gradient(245deg, rgb(0 0 0 / 68%), rgb(0 0 0 / 43%));
+    box-shadow: 0 8px 30px rgb(131 131 131 / 43%);
+    border: 4px solid rgb(109 109 109);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+  /* colored large panels inside player-card (blue / blue / purple) */
+  .panel-fill {
+    height:95px; width:100%;
+    border-radius:8px 8px 0 0;
+    box-shadow: inset 0 -6px 20px rgba(0,0,0,0.35);
+    display:block;
+  }
+  .panel-blue { background: linear-gradient(180deg,#2b9aff,#1b5fbf); }
+  .panel-blue2 { background: linear-gradient(180deg,#2b9aff,#2c8ad6); }
+  .panel-magenta { background: linear-gradient(180deg,#bd00d7,#7b00b0); }
+
+  /* small black strip above bottom purple stripe */
+  .black-strip {
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    bottom: 111px;
+    height: 65px;
+    background: linear-gradient(180deg, #000, #161616);
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.04);
+    z-index: 14;
+}
+
+  /* bottom purple strip */
+  .bottom-purple {
+    position:absolute; left:24px; right:24px; bottom:32px; height:80px;
+    background: linear-gradient(90deg,#8a00b3,#bd00d7);
+    border-radius:6px;
+    z-index:13;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+    border: 3px solid rgba(255,255,255,0.04);
+  }
+
+  /* shine animation on panels to mimic video */
+  .shine {
+    position:absolute; inset:0; pointer-events:none;
+    background: linear-gradient(120deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.16) 50%, rgba(255,255,255,0.06) 100%);
+    transform: translateX(-120%);
+    animation: shineMove 2.6s linear infinite;
+    mix-blend-mode: overlay;
+  }
+  @keyframes shineMove {
+    0% { transform: translateX(-120%); opacity:0; }
+    10% { opacity:1; }
+    80% { transform: translateX(120%); opacity:1; }
+    100% { opacity:0; transform: translateX(120%); }
+  }
+
+  /* small text / layout inside bottom panels */
+  .player-meta {
+    padding:12px 16px; color:#fff; font-weight:700;
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:20px;
+  }
+  .player-sub {
+    padding:8px 14px; font-size:16px; opacity:0.95;
+  }
+
+  /* subtle floating green circles at top of each player-card */
+  .player-circle {
+    position:absolute; top:-40px; left:50%; transform:translateX(-50%);
+    width:70px; height:70px; border-radius:50%;
+    background:#00ff4d; border:6px solid rgba(255,255,255,0.12);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 18px rgba(0,255,77,0.12);
+        display: none;
+  }
+
+  /* responsiveness not needed but keep layout stable */
+  @media (max-width:1920px) {
+    .canvas { transform: scale(0.9); transform-origin: top left; }
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+  <div class="canvas" id="canvas">
+
+   <!-- TOP three boxes -->
+<div class="top-area">
+
+  <!-- LEFT TEAM -->
+  <div class="team-block team-left" style="padding-left:36px;">
+    <div class="circle" style="margin-left:-20px;"></div>
+    <!-- TEXT REMOVED -->
+    <div class="team-content" style="display:none;"></div>
+  </div>
+
+  <!-- CENTER BOX -->
+  <div class="center-box">
+    <!-- TEXT REMOVED -->
+    <div class="center-big" style="display:none;"></div>
+  </div>
+
+  <!-- RIGHT TEAM -->
+  <div class="team-block team-right" style="padding-right:36px; justify-content:flex-end;">
+    <!-- TEXT REMOVED -->
+    <div class="team-content" style="display:none;"></div>
+    <div class="circle" style="margin-right:-20px;"></div>
+  </div>
+
+</div>
+
+
+    <!-- animated mid strip (purple-yellow like image) -->
+    <div class="mid-strip" aria-hidden="true">
+      <div class="mid-gradient"></div>
+    </div>
+
+    <!-- stadium image behind -->
+    <div class="stadium" aria-hidden="true"></div>
+
+    <!-- black strip above bottom panels -->
+    <div class="black-strip"></div>
+
+    <!-- purple strip -->
+    <div class="bottom-purple"></div>
+
+    <!-- BOTTOM three player boxes -->
+   <div class="bottom-zone">
+
+  <!-- PLAYER BOX 1 (no text) -->
+  <div class="player-card">
+    <div class="panel-fill panel-blue"></div>
+    <div class="shine"></div>
+  </div>
+
+  <!-- PLAYER BOX 2 (no text) -->
+  <div class="player-card">
+    <div class="panel-fill panel-blue2"></div>
+    <div class="player-circle" style="left:30%; top:-36px;"></div>
+    <div class="shine"></div>
+  </div>
+
+  <!-- PLAYER BOX 3 (no text) -->
+  <div class="player-card">
+    <div class="panel-fill panel-magenta"></div>
+    <div class="player-circle" style="left:70%; top:-36px;"></div>
+    <div class="shine"></div>
+  </div>
+
+</div>
+
+    </div>
+
+  </div>
+
+<script>
+/*
+  Auto-update logic:
+  - expects an endpoint /api/score_live that returns JSON:
+    { team_a, team_b, score, opponent_score, overs, center_big, batsmen: [...], bowler: {...}, mid_text: "AUS OPT TO BOWL" }
+  - This script smoothly replaces text content.
+*/
+(function(){
+  const update = (data) => {
+    try {
+      if(!data) return;
+      document.getElementById('teamA_code').textContent = data.team_a || 'TEAM A';
+      document.getElementById('teamA_score').textContent = data.score || '0-0';
+      document.getElementById('teamA_overs').textContent = 'OVERS: ' + (data.overs || '0.0');
+      document.getElementById('teamB_code').textContent = data.team_b || 'TEAM B';
+      document.getElementById('teamB_score').textContent = data.opponent_score || '--';
+      document.getElementById('teamB_overs').textContent = data.bowling_label || '';
+      document.getElementById('center_big').textContent = data.center_big || '-';
+      // Optionally update bottom panels (batsmen / bowler)
+      // If data.batsmen is array of 2 and data.bowler present, update HTML accordingly.
+      if(data.batsmen && data.batsmen.length >= 2){
+        const p0 = document.querySelectorAll('.player-card')[0];
+        p0.querySelector('.player-meta > div > div:first-child').textContent = data.batsmen[0].name || 'BAT 1';
+        p0.querySelector('.player-meta > div > div.player-sub').textContent = `${data.batsmen[0].score || '0'} (${data.batsmen[0].balls || '0'}) • 4s:${data.batsmen[0].fours||0} • 6s:${data.batsmen[0].sixes||0} • SR:${data.batsmen[0].sr||0}`;
+        const p1 = document.querySelectorAll('.player-card')[1];
+        p1.querySelector('.player-meta > div > div:first-child').textContent = data.batsmen[1].name || 'BAT 2';
+        p1.querySelector('.player-meta > div > div.player-sub').textContent = `${data.batsmen[1].score || '0'} (${data.batsmen[1].balls || '0'}) • 4s:${data.batsmen[1].fours||0} • 6s:${data.batsmen[1].sixes||0} • SR:${data.batsmen[1].sr||0}`;
+      }
+      if(data.bowler){
+        const p2 = document.querySelectorAll('.player-card')[2];
+        p2.querySelector('.player-meta > div > div:first-child').textContent = data.bowler.name || 'BOWLER';
+        p2.querySelector('.player-meta > div > div.player-sub').textContent = `${data.bowler.overs || '0'} • ${data.bowler.wickets || '0'} • Econ:${data.bowler.econ || '0.0'}`;
+      }
+      // mid strip text (optional)
+      if(data.mid_text){
+        const mid = document.querySelector('.mid-gradient');
+        mid.setAttribute('data-mid', data.mid_text);
+        // we don't draw text inside gradient to preserve look; show center overlay if needed
+      }
+    } catch(e){
+      console.error('update error', e);
+    }
+  };
+
+  // Initial server-injected data if available (Jinja)
+  try{
+    const initial = {{ score|tojson | safe }};
+    if(initial) update(initial);
+  }catch(e){ /* ignore */ }
+
+  // Poll every 3s
+  setInterval(() => {
+    fetch('/api/score_live').then(r => r.json()).then(json => {
+      if(json) update(json);
+    }).catch(err => {/* ignore network errors */});
+  }, 3000);
+
+})();
+</script>
+</body>
+</html>
